@@ -44,6 +44,16 @@ const nav: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: 'Requests',
+    to: '/restaurant/requests',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 1.5a4 4 0 014 4v2.5l1 1.5H3L4 8V5.5a4 4 0 014-4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+        <path d="M6.5 12.5a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
 ]
 
 /**

@@ -164,6 +164,8 @@ $$;
 -- restaurants
 create policy "admin_all"          on public.restaurants for all using (public.is_serveSync_admin());
 create policy "manager_read_own"   on public.restaurants for select using (public.user_manages_restaurant(id));
+-- Required for the public /tap/:restaurantSlug page (no auth)
+create policy "public_read_active" on public.restaurants for select using (active = true);
 
 -- restaurant_users
 create policy "admin_all"          on public.restaurant_users for all using (public.is_serveSync_admin());

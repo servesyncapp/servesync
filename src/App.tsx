@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/store/AuthProvider'
 import { RequireAuth } from '@/routes'
 
+import RestaurantTapPage from '@/pages/RestaurantTapPage'
 import TapPage           from '@/pages/TapPage'
 import LoginPage         from '@/pages/LoginPage'
 import ServerDashboard   from '@/pages/ServerDashboard'
@@ -14,44 +15,47 @@ import Overview          from '@/pages/restaurant/Overview'
 import Items             from '@/pages/restaurant/Items'
 import Analytics         from '@/pages/restaurant/Analytics'
 import Sales             from '@/pages/restaurant/Sales'
+import Requests          from '@/pages/restaurant/Requests'
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* ── Public ─────────────────────────────────────── */}
-          <Route path="/tap/:braceletId" element={<TapPage />} />
-          <Route path="/login"           element={<LoginPage />} />
+          {/* ── Public — customer-facing ────────────────────────
+              /tap/:restaurantSlug  — primary QR/table page (no login)
+              /nfc/:braceletId      — NFC bracelet flow (no login)
+          ──────────────────────────────────────────────────── */}
+          <Route path="/tap/:restaurantSlug" element={<RestaurantTapPage />} />
+          <Route path="/nfc/:braceletId"     element={<TapPage />} />
 
-          {/* ── Server ─────────────────────────────────────── */}
+          {/* ── Auth ───────────────────────────────────────────── */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* ── Server ─────────────────────────────────────────── */}
           <Route element={<RequireAuth allowedRoles={['server', 'manager', 'admin']} />}>
             <Route path="/server" element={<ServerDashboard />} />
           </Route>
 
-          {/* ── Restaurant manager ─────────────────────────── */}
-          {/*
-            RestaurantLayout renders <AppShell> + <Outlet>.
-            Each child route replaces the Outlet with its own page component.
-            NavLink + end={true} on Overview ensures correct active state.
-          */}
+          {/* ── Restaurant manager ─────────────────────────────── */}
           <Route element={<RequireAuth allowedRoles={['manager', 'admin']} />}>
             <Route path="/restaurant" element={<RestaurantLayout />}>
-              <Route index               element={<Overview />}  />
-              <Route path="items"        element={<Items />}     />
-              <Route path="analytics"    element={<Analytics />} />
-              <Route path="sales"        element={<Sales />}     />
+              <Route index            element={<Overview />}  />
+              <Route path="items"     element={<Items />}     />
+              <Route path="analytics" element={<Analytics />} />
+              <Route path="sales"     element={<Sales />}     />
+              <Route path="requests"  element={<Requests />}  />
             </Route>
           </Route>
 
-          {/* ── ServeSync admin ────────────────────────────── */}
+          {/* ── ServeSync admin ────────────────────────────────── */}
           <Route element={<RequireAuth allowedRoles={['admin']} />}>
             <Route path="/admin"           element={<AdminDashboard />} />
             <Route path="/admin/bracelets" element={<AdminDashboard />} />
             <Route path="/admin/servers"   element={<AdminDashboard />} />
           </Route>
 
-          {/* ── Fallbacks ──────────────────────────────────── */}
+          {/* ── Fallbacks ──────────────────────────────────────── */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/unauthorized" element={
             <div className="min-h-dvh bg-[--color-base] flex items-center justify-center">

@@ -6,7 +6,10 @@ import { StatCard } from '@/components/ui/StatCard'
 interface Stats {
   taps: number
   clicks: number
-  requests: number
+  req_total: number
+  req_pending: number
+  req_ordered: number
+  req_dismissed: number
 }
 
 export default function Overview() {
@@ -35,41 +38,47 @@ export default function Overview() {
         .eq('restaurant_id', restaurantId!)
         .gte('clicked_at', today),
       supabase
-        .from('customer_requests')
-        .select('id', { count: 'exact', head: true })
+        .from('item_requests')
+        .select('status')
         .eq('restaurant_id', restaurantId!)
         .gte('created_at', today),
     ])
 
+    const rows = requestsRes.data ?? []
+
     setStats({
-      taps:     tapsRes.count     ?? 0,
-      clicks:   clicksRes.count   ?? 0,
-      requests: requestsRes.count ?? 0,
+      taps:          tapsRes.count  ?? 0,
+      clicks:        clicksRes.count ?? 0,
+      req_total:     rows.length,
+      req_pending:   rows.filter(r => r.status === 'pending').length,
+      req_ordered:   rows.filter(r => r.status === 'ordered').length,
+      req_dismissed: rows.filter(r => r.status === 'dismissed').length,
     })
     setLoading(false)
   }
 
+  const v = (n: keyof Stats) => loading ? '—' : (stats?.[n] ?? 0)
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-[--color-text-primary] mb-1">Overview</h1>
-      <p className="text-sm text-[--color-text-secondary] mb-6">Today's engagement at a glance</p>
+      <p className="text-sm text-[--color-text-secondary] mb-5">Today's engagement at a glance</p>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-        <StatCard
-          label="Taps today"
-          value={loading ? '—' : stats?.taps ?? 0}
-          accent
-        />
-        <StatCard
-          label="Clicks today"
-          value={loading ? '—' : stats?.clicks ?? 0}
-          accent
-        />
-        <StatCard
-          label="Requests today"
-          value={loading ? '—' : stats?.requests ?? 0}
-          accent
-        />
+      {/* Engagement row */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <StatCard label="Taps today"   value={v('taps')}   accent />
+        <StatCard label="Clicks today" value={v('clicks')} accent />
+      </div>
+
+      {/* Requests breakdown */}
+      <p className="text-xs font-semibold text-[--color-text-muted] uppercase tracking-wider mb-2">
+        Requests today
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard label="Total"     value={v('req_total')}     />
+        <StatCard label="Pending"   value={v('req_pending')}   accent />
+        <StatCard label="Ordered"   value={v('req_ordered')}   />
+        <StatCard label="Dismissed" value={v('req_dismissed')} />
       </div>
 
       {/* Coming-soon panel with brand-hero watermark */}
