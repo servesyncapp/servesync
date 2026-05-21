@@ -61,7 +61,7 @@ export default function Requests() {
         .order('created_at', { ascending: false })
 
       if (err) throw err
-      setRequests((data ?? []) as ItemRequest[])
+      setRequests((data ?? []) as unknown as ItemRequest[])
     } catch (err) {
       console.error('[Requests] fetch error:', err)
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
