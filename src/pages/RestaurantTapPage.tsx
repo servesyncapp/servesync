@@ -27,35 +27,103 @@ type PageState = 'loading' | 'ready' | 'not_found' | 'error'
 // ── Category labels ────────────────────────────────────────────────────────────
 
 const CATEGORY: Record<Category, { label: string; icon: string }> = {
-  appetizer:     { label: 'Starter',       icon: '🥗' },
-  drink:         { label: 'Drink Special', icon: '🍹' },
-  top_seller:    { label: 'Top Seller',    icon: '⭐' },
-  daily_special: { label: "Today's Special", icon: '✨' },
-  upsell:        { label: 'Chef Recommends', icon: '🔥' },
+  appetizer:     { label: 'Starter',           icon: '🥗' },
+  drink:         { label: 'Drink Special',     icon: '🍹' },
+  top_seller:    { label: 'Top Seller',        icon: '⭐' },
+  daily_special: { label: "Today's Special",  icon: '✨' },
+  upsell:        { label: 'Chef Recommends',   icon: '🔥' },
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TableBadge({ table }: { table: string | null }) {
-  if (table) {
-    return (
-      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[--color-brand]/15 border border-[--color-brand]/30 text-[--color-brand] text-sm font-semibold">
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0">
-          <rect x="1" y="4" width="11" height="2" rx="1" fill="currentColor"/>
-          <rect x="3" y="6" width="1.5" height="5" rx="0.75" fill="currentColor"/>
-          <rect x="8.5" y="6" width="1.5" height="5" rx="0.75" fill="currentColor"/>
-        </svg>
-        Table {table}
-      </div>
-    )
-  }
+/** Shown when the server name is passed via ?server= */
+function ServerBadge({ server }: { server: string }) {
   return (
-    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[--color-surface-3] border border-[--color-border] text-[--color-text-muted] text-xs">
+    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[--color-surface-3] border border-[--color-border] text-[--color-text-secondary] text-xs font-medium">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0">
-        <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2"/>
-        <path d="M6 4v2.5M6 8h.01" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        <circle cx="6" cy="4" r="2.2" stroke="currentColor" strokeWidth="1.2"/>
+        <path d="M1.5 11c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
       </svg>
-      Table not selected
+      Server: {server}
+    </div>
+  )
+}
+
+/** Shown when a table is confirmed (from URL or typed) */
+function TableBadge({ table }: { table: string }) {
+  return (
+    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[--color-brand]/15 border border-[--color-brand]/30 text-[--color-brand] text-sm font-semibold">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0">
+        <rect x="1" y="4" width="11" height="2" rx="1" fill="currentColor"/>
+        <rect x="3" y="6" width="1.5" height="5" rx="0.75" fill="currentColor"/>
+        <rect x="8.5" y="6" width="1.5" height="5" rx="0.75" fill="currentColor"/>
+      </svg>
+      Table {table}
+    </div>
+  )
+}
+
+/** Input shown when no table is known — customer types their table number */
+function TableInput({
+  value,
+  onChange,
+  onConfirm,
+  hasError,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onConfirm: () => void
+  hasError: boolean
+}) {
+  return (
+    <div className="w-full">
+      <div
+        className={[
+          'flex items-center gap-2 rounded-xl border transition-colors',
+          hasError
+            ? 'border-orange-500/50 bg-orange-500/5'
+            : 'border-[--color-brand]/25 bg-[--color-surface-2]',
+        ].join(' ')}
+      >
+        {/* Table icon */}
+        <span className="pl-3.5 text-[--color-brand]/60 shrink-0">
+          <svg width="14" height="14" viewBox="0 0 13 13" fill="none">
+            <rect x="1" y="4" width="11" height="2" rx="1" fill="currentColor"/>
+            <rect x="3" y="6" width="1.5" height="5" rx="0.75" fill="currentColor"/>
+            <rect x="8.5" y="6" width="1.5" height="5" rx="0.75" fill="currentColor"/>
+          </svg>
+        </span>
+
+        <input
+          id="ss-table-input"
+          type="text"
+          inputMode="numeric"
+          placeholder="What table are you at?"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) onConfirm() }}
+          className="flex-1 bg-transparent py-3 text-sm text-[--color-text-primary] placeholder:text-[--color-text-muted] outline-none"
+        />
+
+        {/* Confirm arrow — only visible once something is typed */}
+        {value.trim() && (
+          <button
+            onClick={onConfirm}
+            aria-label="Confirm table"
+            className="mr-2 flex items-center justify-center w-7 h-7 rounded-lg bg-[--color-brand] text-[--color-base] shrink-0 transition-transform active:scale-95"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2.5 6h7M6.5 3l3 3-3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {hasError && (
+        <p className="text-xs text-orange-400 mt-1.5 pl-1">
+          Enter your table number to request items.
+        </p>
+      )}
     </div>
   )
 }
@@ -166,15 +234,35 @@ function Toast({ message }: { message: string }) {
 export default function RestaurantTapPage() {
   const { restaurantSlug } = useParams<{ restaurantSlug: string }>()
   const [searchParams] = useSearchParams()
-  const table = searchParams.get('table')
 
-  const [pageState, setPageState]   = useState<PageState>('loading')
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
-  const [items, setItems]           = useState<FeaturedItem[]>([])
-  const [requested, setRequested]   = useState<Set<string>>(new Set())
-  const [loadingItem, setLoadingItem] = useState<string | null>(null)
-  const [toast, setToast]           = useState<string | null>(null)
-  const [errorMsg, setErrorMsg]     = useState<string | null>(null)
+  // ── URL params ────────────────────────────────────────────────────────────
+  // ?table=12   — pre-set table number (e.g. QR code on a table)
+  // ?server=isaac — server name from NFC bracelet tap
+  const table  = searchParams.get('table')
+  const server = searchParams.get('server')
+
+  // Capitalize the server name for display (isaac → Isaac)
+  const serverDisplay = server
+    ? server.charAt(0).toUpperCase() + server.slice(1)
+    : null
+
+  // ── Page state ────────────────────────────────────────────────────────────
+  const [pageState,     setPageState]    = useState<PageState>('loading')
+  const [restaurant,    setRestaurant]   = useState<Restaurant | null>(null)
+  const [items,         setItems]        = useState<FeaturedItem[]>([])
+  const [requested,     setRequested]    = useState<Set<string>>(new Set())
+  const [loadingItem,   setLoadingItem]  = useState<string | null>(null)
+  const [toast,         setToast]        = useState<string | null>(null)
+  const [errorMsg,      setErrorMsg]     = useState<string | null>(null)
+
+  // Table input state — used when ?table= is absent
+  const [tableInput,    setTableInput]   = useState('')
+  const [enteredTable,  setEnteredTable] = useState<string | null>(null)
+  const [tableError,    setTableError]   = useState(false)
+
+  // The table we'll attach to every request: URL param takes priority,
+  // then whatever the customer typed in the input.
+  const effectiveTable = table ?? enteredTable
 
   useEffect(() => {
     if (restaurantSlug) load()
@@ -216,16 +304,34 @@ export default function RestaurantTapPage() {
     }
   }
 
+  /** Called when the customer presses Enter or the arrow button in the table input */
+  function handleTableConfirm() {
+    const trimmed = tableInput.trim()
+    if (trimmed) {
+      setEnteredTable(trimmed)
+      setTableError(false)
+    }
+  }
+
   async function handleRequest(item: FeaturedItem) {
     if (!restaurant || loadingItem) return
+
+    // Require a table number before submitting — focus the input if missing
+    if (!effectiveTable) {
+      setTableError(true)
+      document.getElementById('ss-table-input')?.focus()
+      return
+    }
+
     setLoadingItem(item.id)
 
     try {
-      // Primary record — drives the manager's Requests dashboard
+      // Primary record — drives the Requests dashboard
       await supabase.from('item_requests').insert({
         restaurant_id:    restaurant.id,
         featured_item_id: item.id,
-        table_label:      table ?? null,
+        table_label:      effectiveTable,
+        server_label:     server ?? null,
         status:           'pending',
       })
     } catch (err) {
@@ -247,9 +353,7 @@ export default function RestaurantTapPage() {
 
     setRequested(prev => new Set([...prev, item.id]))
     setLoadingItem(null)
-
-    const tableText = table ? `Table ${table}` : 'your table'
-    showToast(`"${item.name}" requested for ${tableText}`)
+    showToast(`"${item.name}" requested for Table ${effectiveTable}`)
   }
 
   function showToast(msg: string) {
@@ -321,7 +425,7 @@ export default function RestaurantTapPage() {
         <div className="max-w-lg mx-auto px-5 pt-8 pb-6">
 
           {/* Logo + name */}
-          <div className="flex items-center gap-4 mb-5">
+          <div className="flex items-center gap-4 mb-4">
             {restaurant.logo_url ? (
               <img
                 src={restaurant.logo_url}
@@ -343,8 +447,24 @@ export default function RestaurantTapPage() {
             </div>
           </div>
 
-          {/* Table indicator */}
-          <TableBadge table={table} />
+          {/* Context badges — server and/or table when known */}
+          {(serverDisplay || effectiveTable) && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {serverDisplay  && <ServerBadge server={serverDisplay} />}
+              {effectiveTable && <TableBadge  table={effectiveTable} />}
+            </div>
+          )}
+
+          {/* Table input — shown when no table is known yet */}
+          {!effectiveTable && (
+            <TableInput
+              value={tableInput}
+              onChange={setTableInput}
+              onConfirm={handleTableConfirm}
+              hasError={tableError}
+            />
+          )}
+
         </div>
       </div>
 

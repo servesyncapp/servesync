@@ -10,6 +10,7 @@ interface ItemRequest {
   id: string
   featured_item_id: string | null
   table_label: string | null
+  server_label: string | null
   status: RequestStatus
   ordered_at: string | null
   created_at: string
@@ -56,7 +57,7 @@ export default function Requests() {
     try {
       const { data, error: err } = await supabase
         .from('item_requests')
-        .select('id, featured_item_id, table_label, status, ordered_at, created_at, featured_items(name)')
+        .select('id, featured_item_id, table_label, server_label, status, ordered_at, created_at, featured_items(name)')
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
 
@@ -198,8 +199,8 @@ export default function Requests() {
                   </span>
                 </div>
 
-                {/* Meta row */}
-                <div className="flex items-center gap-2.5 mb-4 text-xs text-[--color-text-muted]">
+                {/* Meta row: Table · Server · time */}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-4 text-xs text-[--color-text-muted]">
                   {req.table_label ? (
                     <span className="flex items-center gap-1">
                       <svg width="11" height="11" viewBox="0 0 13 13" fill="none">
@@ -211,6 +212,18 @@ export default function Requests() {
                     </span>
                   ) : (
                     <span className="opacity-60">No table</span>
+                  )}
+                  {req.server_label && (
+                    <>
+                      <span className="opacity-40">·</span>
+                      <span className="flex items-center gap-1">
+                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                          <circle cx="6" cy="4" r="2.2" stroke="currentColor" strokeWidth="1.2"/>
+                          <path d="M1.5 11c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                        </svg>
+                        Server {req.server_label.charAt(0).toUpperCase() + req.server_label.slice(1)}
+                      </span>
+                    </>
                   )}
                   <span className="opacity-40">·</span>
                   <span>{timeAgo(req.created_at)}</span>
