@@ -80,7 +80,7 @@ FROM
       '32.99',        -- special_price ($35.98 - $2.99 = $32.99)
       'ServeSync Special',
       '$2.99 OFF',    -- matches ribbon PNG asset
-      NULL,           -- image_url (add real URL here when available)
+      '/images/featured-brisket-margarita.jpg', -- image_url
       1,
       '4.9',          -- rating
       24,             -- nightly_orders

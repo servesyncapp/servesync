@@ -188,20 +188,22 @@ function ItemCard({
 
   return (
     <div
-      className={[
-        'rounded-2xl border overflow-hidden',
-        // hover lift (desktop) + tap scale (mobile) — both handled by CSS transition below
-        'hover:-translate-y-0.5 active:scale-[0.98]',
-        isPromo
-          ? requested ? 'bg-[#211d12] border-[#d4a017]/50' : 'bg-[#1c1810] border-[#d4a017]/40'
-          : requested ? 'bg-[#211d12] border-[#e8621a]/25' : 'bg-[#18150d] border-[#352e1c]',
-      ].join(' ')}
+      className="relative hover:-translate-y-0.5 active:scale-[0.98]"
       style={{
-        transition: 'transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease',
+        transition: 'transform 220ms ease, box-shadow 220ms ease',
         animation: prefersReducedMotion
           ? 'none'
           : `ss-card-in 380ms ease-out ${index * 65 + 80}ms both`,
       }}
+    >
+    {/* Inner card: visual styling + content/ribbon overflow clipping */}
+    <div
+      className={[
+        'rounded-2xl border overflow-hidden',
+        isPromo
+          ? requested ? 'bg-[#211d12] border-[#d4a017]/50' : 'bg-[#1c1810] border-[#d4a017]/40'
+          : requested ? 'bg-[#211d12] border-[#e8621a]/25' : 'bg-[#18150d] border-[#352e1c]',
+      ].join(' ')}
     >
 
       {/* ── Promo banner ──────────────────────────────────────────────────────── */}
@@ -227,48 +229,77 @@ function ItemCard({
       )}
 
       {/* ── Image section with PNG overlays ───────────────────────────────────── */}
-      <div className="relative">
+      {/* overflow-hidden ensures badge/ribbon clip flush at the card boundary    */}
+      <div className="relative overflow-hidden">
         {item.image_url ? (
-          <div className="h-52 overflow-hidden bg-[#2a2518]">
+          <div className="relative h-[230px] overflow-hidden bg-[#2a2518]">
             <img
               src={item.image_url}
               alt={item.name}
               className="w-full h-full object-cover"
               loading="lazy"
             />
+            {/* Dark scrim — keeps badge + ribbon readable over any food photo */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'linear-gradient(rgba(0,0,0,.15), rgba(0,0,0,.45))' }}
+            />
           </div>
         ) : (
           <ImagePlaceholder category={item.category} />
         )}
 
-        {/* Ribbon — top-left corner (clipped cleanly by card's overflow-hidden) */}
-        {isPromo && item.savings_text && (
-          <img
-            src="/logos/servesync-ribbon.png"
-            alt=""
-            className="absolute top-0 left-0 w-[100px] z-20 pointer-events-none select-none"
+        {/* Ribbon — dynamic text overlay; blank PNG is visual-only              */}
+        {/* Text: savings_text → promo_label → "SPECIAL" — no new PNGs ever      */}
+        {isPromo && (
+          <div
+            className="absolute z-20 pointer-events-none select-none"
             style={{
+              top: '-27px',
+              left: '-3px',
+              width: '125px',
+              height: '125px',
+              transformOrigin: 'top left',
+              transform: 'rotate(-2deg)',
               animation: prefersReducedMotion
                 ? 'none'
                 : 'ss-ribbon-shimmer 10s ease-in-out infinite',
             }}
-          />
+          >
+            {/* Layer 1 — blank ribbon shape, preserves transparency */}
+            <img
+              src="/logos/servesync-ribbon-blank.png"
+              alt=""
+              className="w-full h-full block"
+            />
+
+            {/* Layer 2 — text pulled from Supabase, rotated to match diagonal */}
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+              <span
+                style={{
+                  position:        'absolute',
+                  display:         'block',
+                  width:           '90px',
+                  top:             '44px',
+                  left:            '2px',
+                  textAlign:       'center',
+                  transform:       'rotate(-27deg)',
+                  transformOrigin: 'center center',
+                  fontWeight:      900,
+                  fontSize:        '11px',
+                  lineHeight:      1,
+                  letterSpacing:   '0.02em',
+                  color:           'rgba(45,28,8,.98)',
+                  textTransform:   'uppercase',
+                  whiteSpace:      'pre-line',
+                }}
+              >
+                {item.savings_text ?? item.promo_label ?? 'SPECIAL'}
+              </span>
+            </div>
+          </div>
         )}
 
-        {/* Deal badge — top-right of image */}
-        {isPromo && (
-          <img
-            src="/logos/servesync-deal-badge.png"
-            alt="ServeSync Deal"
-            className="absolute top-3 right-3 w-[88px] h-[88px] z-20 pointer-events-none select-none"
-            style={{
-              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))',
-              animation: prefersReducedMotion
-                ? 'none'
-                : 'ss-badge-pulse 5.5s ease-in-out infinite',
-            }}
-          />
-        )}
       </div>
 
       {/* ── Card body ───────────────────────────────────────────────────────── */}
@@ -361,7 +392,29 @@ function ItemCard({
         </div>
 
       </div>
-    </div>
+    </div>{/* end inner card */}
+
+    {/* Deal badge — outside inner card so it overlaps the card edge as a seal  */}
+    {/* Rotation wrapper isolates rotate(8deg) from the pulse animation's scale  */}
+    {isPromo && (
+      <div
+        className="absolute z-30 pointer-events-none select-none"
+        style={{ top: '46px', right: '-34px', transform: 'rotate(8deg)' }}
+      >
+        <img
+          src="/logos/servesync-deal-badge-v2.png"
+          alt="ServeSync Deal"
+          className="w-[118px] h-[118px] block"
+          style={{
+            filter: 'drop-shadow(0 6px 18px rgba(0,0,0,.45))',
+            animation: prefersReducedMotion
+              ? 'none'
+              : 'ss-badge-pulse 5.5s ease-in-out infinite',
+          }}
+        />
+      </div>
+    )}
+  </div>
   )
 }
 
