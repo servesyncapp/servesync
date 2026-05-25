@@ -87,3 +87,39 @@
   .input::placeholder { color: var(--color-text-muted); }
   .input:focus { border-color: var(--color-brand); }
 }
+
+/* ── Tap-page motion keyframes ──────────────────────────────────────────────── */
+
+/* Hero entrance — fade + rise */
+@keyframes ss-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Card stagger entrance */
+@keyframes ss-card-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Deal badge — very slow, low-intensity pulse */
+@keyframes ss-badge-pulse {
+  0%, 100% { transform: scale(1);    }
+  50%      { transform: scale(1.03); }
+}
+
+/* Gold ribbon — occasional soft shimmer every ~10s */
+@keyframes ss-ribbon-shimmer {
+  0%, 83%, 100% { filter: brightness(1);    }
+  89%           { filter: brightness(1.22); }
+  95%           { filter: brightness(1);    }
+}
+
+/* Honour user's motion preference — scoped only to the tap page root */
+@media (prefers-reduced-motion: reduce) {
+  .ss-motion-root * {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    transition-duration:       100ms  !important;
+  }
+}
