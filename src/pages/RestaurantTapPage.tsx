@@ -543,6 +543,20 @@ export default function RestaurantTapPage() {
       console.error('[TapPage] item_requests insert error:', err)
     }
 
+    // Also create an order_intent so the server dashboard gets a live ping.
+    // server_id (UUID) is left null — the tap URL only carries a text name.
+    try {
+      await supabase.from('order_intents').insert({
+        restaurant_id: restaurant.id,
+        item_id:       item.id,
+        table_label:   effectiveTable,
+        server_label:  server ?? null,
+        status:        'pending',
+      })
+    } catch (err) {
+      console.error('[TapPage] order_intent insert error:', err)
+    }
+
     try {
       await supabase.from('click_events').insert({
         restaurant_id:    restaurant.id,
