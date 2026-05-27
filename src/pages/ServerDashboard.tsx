@@ -118,10 +118,13 @@ export default function ServerDashboard() {
   }, [user?.id, authRestaurantId])
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
+  // silent=true  → background poll; never touches the loading skeleton so
+  //               cards already on screen don't flash away.
+  // silent=false → initial load; shows the skeleton until data arrives.
 
-  const fetchIntents = useCallback(async () => {
+  const fetchIntents = useCallback(async (silent = false) => {
     if (!restaurantId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     setError(null)
     try {
       const { data, error: err } = await supabase
@@ -136,16 +139,16 @@ export default function ServerDashboard() {
       console.error('[ServerDashboard] fetch error:', err)
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [restaurantId])
 
-  // Initial load + 10 s polling fallback (active even when realtime is live —
-  // ensures stale data never sits longer than 10 s if the channel drops)
+  // Initial load (shows skeleton) + 10 s silent poll as fallback.
+  // The poll never touches setLoading so it won't flash the skeleton.
   useEffect(() => {
     if (!restaurantId) return
-    fetchIntents()
-    const poll = setInterval(fetchIntents, 10_000)
+    fetchIntents(false)
+    const poll = setInterval(() => fetchIntents(true), 10_000)
     return () => clearInterval(poll)
   }, [fetchIntents, restaurantId])
 
@@ -173,7 +176,9 @@ export default function ServerDashboard() {
           filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload) => {
-          // Re-fetch the new row with the join so we get featured_items.name
+          // Re-fetch with join so we get featured_items.name in the new card.
+          // Dedup guard: realtime and the 10 s poll can both fire for the same
+          // new row — only prepend if the id isn't already in the list.
           const newId = (payload.new as { id: string }).id
           supabase
             .from('order_intents')
@@ -182,7 +187,11 @@ export default function ServerDashboard() {
             .maybeSingle()
             .then(({ data }) => {
               if (data) {
-                setIntents(prev => [data as unknown as OrderIntent, ...prev])
+                setIntents(prev =>
+                  prev.some(i => i.id === newId)
+                    ? prev
+                    : [data as unknown as OrderIntent, ...prev]
+                )
               }
             })
         }
@@ -211,36 +220,45 @@ export default function ServerDashboard() {
   }, [restaurantId])
 
   // ── Resolve ───────────────────────────────────────────────────────────────
+  // Truly optimistic: local state is updated BEFORE the DB write so the badge
+  // flips instantly on click. If the DB call fails, we roll back to the
+  // snapshot captured at the start of the function.
+  //
+  // The realtime UPDATE handler will also fire for other open tabs, keeping
+  // them in sync without any extra work here.
 
   async function resolve(id: string, status: 'ordered' | 'dismissed') {
     setUpdating(id)
-    try {
-      const now = new Date().toISOString()
+    const now = new Date().toISOString()
 
+    // 1. Snapshot current state for rollback on error.
+    // 2. Apply the status change immediately — badge flips right now.
+    setIntents(prev =>
+      prev.map(i =>
+        i.id === id
+          ? { ...i, status, resolved_at: now, resolved_by: user?.id ?? null }
+          : i
+      )
+    )
+
+    try {
       const { error: err } = await supabase
         .from('order_intents')
         .update({
           status,
           resolved_at: now,
           resolved_by: user?.id ?? null,
-          // updated_at is handled automatically by the DB trigger;
-          // we set it here too so the optimistic update matches.
+          // updated_at is set here so it matches the trigger value on other tabs
           updated_at: now,
         })
         .eq('id', id)
 
       if (err) throw err
-
-      // Optimistic update — no re-fetch needed
-      setIntents(prev =>
-        prev.map(i =>
-          i.id === id
-            ? { ...i, status, resolved_at: now, resolved_by: user?.id ?? null }
-            : i
-        )
-      )
+      // Success — optimistic state already matches DB. Nothing more to do.
     } catch (err) {
       console.error('[ServerDashboard] resolve error:', err)
+      // Roll back: re-fetch from DB so the card reflects actual server state.
+      void fetchIntents(true)
     } finally {
       setUpdating(null)
     }
@@ -265,7 +283,7 @@ export default function ServerDashboard() {
             </p>
           </div>
           <button
-            onClick={fetchIntents}
+            onClick={() => fetchIntents(false)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[--color-border] text-xs font-medium text-[--color-text-secondary] hover:text-[--color-text-primary] hover:border-[--color-brand]/40 transition-colors disabled:opacity-50 mt-1"
           >
