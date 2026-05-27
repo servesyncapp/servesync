@@ -314,7 +314,7 @@ export default function Analytics() {
       </div>
 
       {/* ── Conversion spotlight ─────────────────────────────────────────── */}
-      <SectionLabel label="ServeSync-Assisted Conversion" />
+      <SectionLabel label="ServeSync-Assisted Orders" />
       <div className="card p-6 relative overflow-hidden">
         {/* Subtle brand tint */}
         <div
@@ -343,7 +343,7 @@ export default function Analytics() {
                     {convRate}
                   </p>
                   <p className="text-sm font-semibold text-[--color-text-primary] mt-1">
-                    of completed requests confirmed as orders
+                    of completed guest requests became confirmed orders
                   </p>
                   <p className="text-xs text-[--color-text-muted] mt-0.5">
                     {stats?.ordered} confirmed orders · {stats?.dismissed} dismissed · {resolved} completed requests
