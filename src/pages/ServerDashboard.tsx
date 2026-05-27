@@ -194,112 +194,144 @@ export default function ServerDashboard() {
   }, [fetchIntents, restaurantId])
 
   // ── Realtime subscription ─────────────────────────────────────────────────
-  // Listens for INSERT and UPDATE on order_intents filtered by restaurant_id.
+  // Single postgres_changes subscription using event:'*' with NO server-side
+  // filter.  Supabase realtime column filters (restaurant_id=eq.X) are
+  // evaluated by the realtime process and have an intermittent bug where they
+  // deliver the first matching event then silently drop all subsequent ones on
+  // the same channel.  Removing the filter and guarding client-side is the
+  // reliable workaround.
   //
-  // Prerequisites (run once in Supabase Dashboard):
+  // Prerequisites (run once in Supabase Dashboard after running the migration):
   //   Database → Replication → Tables → toggle order_intents ON
-  //   (The migration SQL also runs ALTER PUBLICATION supabase_realtime ADD TABLE
-  //    and sets REPLICA IDENTITY FULL.)
   //
-  // The 10 s poll above acts as a silent fallback if this channel fails.
+  // The 10 s poll above acts as a silent fallback if the channel goes down.
+  // Effect deps: [restaurantId] only — state changes never retrigger this.
 
   useEffect(() => {
     if (!restaurantId) return
+
+    if (import.meta.env.DEV) {
+      console.log('[ServerDashboard] creating realtime channel for restaurantId:', restaurantId)
+    }
 
     const channel = supabase
       .channel(`order_intents_${restaurantId}`)
       .on(
         'postgres_changes',
         {
-          event:  'INSERT',
+          event:  '*',      // INSERT + UPDATE + DELETE in one subscription
           schema: 'public',
           table:  'order_intents',
-          filter: `restaurant_id=eq.${restaurantId}`,
+          // ↑ No filter here — see comment above. Filtering happens below.
         },
         (payload) => {
-          // Use payload.new directly — no secondary SELECT round-trip.
-          //
-          // The async re-fetch pattern caused two failure modes:
-          //   1. The SELECT raced against a polling setIntents(replace) call;
-          //      the dedup guard saw the id already present and dropped the row.
-          //   2. Under load the SELECT returned null before the row was visible
-          //      to reads, silently skipping the card.
-          //
-          // payload.new carries all raw columns. featured_items is a join, not
-          // a column, so it's absent — we inherit it from any existing card
-          // with the same item_id, which covers repeated requests for the same item.
-          const raw   = payload.new as Record<string, unknown>
-          const newId = raw.id as string
-
-          if (import.meta.env.DEV) {
-            console.log('[ServerDashboard] realtime INSERT received id:', newId)
-          }
-
-          setIntents(prev => {
-            // Dedup strictly by id — two requests for the same item/table/server
-            // are distinct rows and must both appear as separate cards.
-            if (prev.some(i => i.id === newId)) {
-              if (import.meta.env.DEV) {
-                console.log('[ServerDashboard] realtime INSERT ignored duplicate id:', newId)
-              }
-              return prev
-            }
-
-            const existingForItem = prev.find(
-              i => i.item_id === (raw.item_id as string)
-            )
-
-            const intent: OrderIntent = {
-              id:            newId,
-              restaurant_id: raw.restaurant_id as string,
-              server_id:     (raw.server_id     as string | null) ?? null,
-              server_label:  (raw.server_label  as string | null) ?? null,
-              item_id:       raw.item_id         as string,
-              tap_event_id:  (raw.tap_event_id  as string | null) ?? null,
-              table_label:   (raw.table_label   as string | null) ?? null,
-              status:        (raw.status         as IntentStatus) ?? 'pending',
-              created_at:    raw.created_at      as string,
-              updated_at:    raw.updated_at      as string,
-              resolved_at:   (raw.resolved_at   as string | null) ?? null,
-              resolved_by:   (raw.resolved_by   as string | null) ?? null,
-              // Inherit from an existing same-item card; the 10 s poll will
-              // replace this with a proper join value on the next cycle.
-              featured_items: existingForItem?.featured_items ?? null,
-            }
+          try {
+            const eventType       = payload.eventType
+            // payload.new is the new row for INSERT/UPDATE; {} for DELETE.
+            const raw             = (payload.new ?? {}) as Record<string, unknown>
+            const rowId           = raw.id            as string | undefined
+            const rowRestaurantId = raw.restaurant_id as string | undefined
 
             if (import.meta.env.DEV) {
-              console.log('[ServerDashboard] realtime INSERT added id:', newId)
+              console.log(
+                '[ServerDashboard] realtime payload —',
+                'event:', eventType,
+                '| payload.new.id:', rowId           ?? '(none)',
+                '| payload.new.restaurant_id:', rowRestaurantId ?? '(none)',
+                '| dashboard restaurantId:', restaurantId,
+              )
             }
-            return [intent, ...prev]
-          })
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event:  'UPDATE',
-          schema: 'public',
-          table:  'order_intents',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        (payload) => {
-          // payload.new = raw columns only (no join). Spreading over the
-          // existing intent preserves featured_items already in state.
-          const updated = payload.new as Partial<OrderIntent> & { id: string }
 
-          if (import.meta.env.DEV) {
-            console.log('[ServerDashboard] realtime UPDATE received id:', updated.id, '→', updated.status)
+            // ── Client-side guards ──────────────────────────────────────────
+            // Skip rows that belong to a different restaurant (RLS covers this
+            // at the DB level, but this is a fast in-JS safety check).
+            if (!rowId) {
+              if (import.meta.env.DEV) console.log('[ServerDashboard] ignored: no id in payload')
+              return
+            }
+            if (rowRestaurantId && rowRestaurantId !== restaurantId) {
+              if (import.meta.env.DEV) console.log('[ServerDashboard] ignored: restaurant_id mismatch')
+              return
+            }
+
+            // ── INSERT ───────────────────────────────────────────────────────
+            if (eventType === 'INSERT') {
+              setIntents(prev => {
+                // Dedup by id only — two requests for the same item/table/server
+                // are distinct rows and must each appear as a separate card.
+                if (prev.some(i => i.id === rowId)) {
+                  if (import.meta.env.DEV) {
+                    console.log('[ServerDashboard] INSERT ignored — duplicate id:', rowId)
+                  }
+                  return prev
+                }
+
+                // payload.new has raw columns; featured_items is a join (absent).
+                // Inherit item name from the first card with the same item_id;
+                // the 10 s poll will fill it in properly on the next cycle.
+                const existingForItem = prev.find(
+                  i => i.item_id === (raw.item_id as string)
+                )
+
+                const intent: OrderIntent = {
+                  id:            rowId,
+                  restaurant_id: (rowRestaurantId ?? restaurantId) as string,
+                  server_id:     (raw.server_id    as string | null) ?? null,
+                  server_label:  (raw.server_label as string | null) ?? null,
+                  item_id:       raw.item_id        as string,
+                  tap_event_id:  (raw.tap_event_id  as string | null) ?? null,
+                  table_label:   (raw.table_label   as string | null) ?? null,
+                  status:        (raw.status         as IntentStatus) ?? 'pending',
+                  created_at:    raw.created_at      as string,
+                  updated_at:    raw.updated_at      as string,
+                  resolved_at:   (raw.resolved_at   as string | null) ?? null,
+                  resolved_by:   (raw.resolved_by   as string | null) ?? null,
+                  featured_items: existingForItem?.featured_items ?? null,
+                }
+
+                if (import.meta.env.DEV) {
+                  console.log('[ServerDashboard] INSERT accepted — added id:', rowId)
+                }
+                return [intent, ...prev]
+              })
+              return
+            }
+
+            // ── UPDATE ───────────────────────────────────────────────────────
+            // Spread raw columns over the existing row so featured_items
+            // (a join, not a column) is preserved from current state.
+            if (eventType === 'UPDATE') {
+              const updated = payload.new as Partial<OrderIntent> & { id: string }
+              setIntents(prev =>
+                prev.map(i => (i.id === rowId ? { ...i, ...updated } : i))
+              )
+              if (import.meta.env.DEV) {
+                console.log('[ServerDashboard] UPDATE accepted — id:', rowId, '→', raw.status as string)
+              }
+              return
+            }
+
+            // DELETE — not expected in normal flow; ignore silently.
+            if (import.meta.env.DEV) {
+              console.log('[ServerDashboard] ignored eventType:', eventType)
+            }
+          } catch (handlerErr) {
+            // Never let a handler exception break future events on this channel.
+            console.error('[ServerDashboard] realtime handler error:', handlerErr)
           }
-
-          setIntents(prev =>
-            prev.map(i => (i.id === updated.id ? { ...i, ...updated } : i))
-          )
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        if (import.meta.env.DEV) {
+          console.log('[ServerDashboard] channel status:', status, err ?? '')
+        }
+      })
 
     channelRef.current = channel
     return () => {
+      if (import.meta.env.DEV) {
+        console.log('[ServerDashboard] removing channel for restaurantId:', restaurantId)
+      }
       void supabase.removeChannel(channel)
     }
   }, [restaurantId])
