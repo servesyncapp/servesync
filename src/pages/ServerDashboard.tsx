@@ -193,6 +193,32 @@ export default function ServerDashboard() {
     return () => clearInterval(poll)
   }, [fetchIntents, restaurantId])
 
+  // ── Visibility / focus refresh ─────────────────────────────────────────────
+  // Browsers throttle or suspend timers and WebSocket activity when a tab is
+  // backgrounded, so realtime events and the 10 s poll can be missed while the
+  // server is away from the screen.  When they return, immediately sync state
+  // using the silent merge path so no skeleton is shown and no cards are wiped.
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible') {
+        void fetchIntents(true)
+      }
+    }
+
+    function onFocus() {
+      void fetchIntents(true)
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [fetchIntents])
+
   // ── Realtime subscription ─────────────────────────────────────────────────
   // Single postgres_changes subscription using event:'*' with NO server-side
   // filter.  Supabase realtime column filters (restaurant_id=eq.X) are
