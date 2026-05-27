@@ -134,7 +134,48 @@ export default function ServerDashboard() {
         .order('created_at', { ascending: false })
 
       if (err) throw err
-      setIntents((data ?? []) as unknown as OrderIntent[])
+
+      const freshRows = (data ?? []) as unknown as OrderIntent[]
+
+      if (!silent) {
+        // Initial load — replace state directly; skeleton was shown.
+        setIntents(freshRows)
+      } else {
+        // Background poll — merge by id so realtime-added rows that the
+        // poll's SELECT missed (due to timing) are never silently dropped.
+        //
+        // Strategy:
+        //   • Start with fresh DB rows (canonical order + latest status).
+        //   • Append any prev rows whose id is absent from the DB result
+        //     (realtime added them but the poll query ran before they committed).
+        //   • Re-sort everything by created_at DESC.
+        setIntents(prev => {
+          const freshMap = new Map(freshRows.map(r => [r.id, r]))
+          const prevMap  = new Map(prev.map(i => [i.id, i]))
+
+          // Update existing or accept new rows from DB (DB has join data).
+          const merged = freshRows.map(row => {
+            const existing = prevMap.get(row.id)
+            return {
+              ...row,
+              // Prefer DB-joined featured_items; fall back to what realtime
+              // already stored in state (for the split-second before poll syncs).
+              featured_items: row.featured_items ?? existing?.featured_items ?? null,
+            } as OrderIntent
+          })
+
+          // Preserve rows realtime already added that DB poll missed.
+          for (const prevRow of prev) {
+            if (!freshMap.has(prevRow.id)) {
+              merged.push(prevRow)
+            }
+          }
+
+          // Restore created_at DESC sort.
+          merged.sort((a, b) => b.created_at.localeCompare(a.created_at))
+          return merged
+        })
+      }
     } catch (err) {
       console.error('[ServerDashboard] fetch error:', err)
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
@@ -176,24 +217,61 @@ export default function ServerDashboard() {
           filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload) => {
-          // Re-fetch with join so we get featured_items.name in the new card.
-          // Dedup guard: realtime and the 10 s poll can both fire for the same
-          // new row — only prepend if the id isn't already in the list.
-          const newId = (payload.new as { id: string }).id
-          supabase
-            .from('order_intents')
-            .select(INTENT_SELECT)
-            .eq('id', newId)
-            .maybeSingle()
-            .then(({ data }) => {
-              if (data) {
-                setIntents(prev =>
-                  prev.some(i => i.id === newId)
-                    ? prev
-                    : [data as unknown as OrderIntent, ...prev]
-                )
+          // Use payload.new directly — no secondary SELECT round-trip.
+          //
+          // The async re-fetch pattern caused two failure modes:
+          //   1. The SELECT raced against a polling setIntents(replace) call;
+          //      the dedup guard saw the id already present and dropped the row.
+          //   2. Under load the SELECT returned null before the row was visible
+          //      to reads, silently skipping the card.
+          //
+          // payload.new carries all raw columns. featured_items is a join, not
+          // a column, so it's absent — we inherit it from any existing card
+          // with the same item_id, which covers repeated requests for the same item.
+          const raw   = payload.new as Record<string, unknown>
+          const newId = raw.id as string
+
+          if (import.meta.env.DEV) {
+            console.log('[ServerDashboard] realtime INSERT received id:', newId)
+          }
+
+          setIntents(prev => {
+            // Dedup strictly by id — two requests for the same item/table/server
+            // are distinct rows and must both appear as separate cards.
+            if (prev.some(i => i.id === newId)) {
+              if (import.meta.env.DEV) {
+                console.log('[ServerDashboard] realtime INSERT ignored duplicate id:', newId)
               }
-            })
+              return prev
+            }
+
+            const existingForItem = prev.find(
+              i => i.item_id === (raw.item_id as string)
+            )
+
+            const intent: OrderIntent = {
+              id:            newId,
+              restaurant_id: raw.restaurant_id as string,
+              server_id:     (raw.server_id     as string | null) ?? null,
+              server_label:  (raw.server_label  as string | null) ?? null,
+              item_id:       raw.item_id         as string,
+              tap_event_id:  (raw.tap_event_id  as string | null) ?? null,
+              table_label:   (raw.table_label   as string | null) ?? null,
+              status:        (raw.status         as IntentStatus) ?? 'pending',
+              created_at:    raw.created_at      as string,
+              updated_at:    raw.updated_at      as string,
+              resolved_at:   (raw.resolved_at   as string | null) ?? null,
+              resolved_by:   (raw.resolved_by   as string | null) ?? null,
+              // Inherit from an existing same-item card; the 10 s poll will
+              // replace this with a proper join value on the next cycle.
+              featured_items: existingForItem?.featured_items ?? null,
+            }
+
+            if (import.meta.env.DEV) {
+              console.log('[ServerDashboard] realtime INSERT added id:', newId)
+            }
+            return [intent, ...prev]
+          })
         }
       )
       .on(
@@ -205,7 +283,14 @@ export default function ServerDashboard() {
           filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload) => {
+          // payload.new = raw columns only (no join). Spreading over the
+          // existing intent preserves featured_items already in state.
           const updated = payload.new as Partial<OrderIntent> & { id: string }
+
+          if (import.meta.env.DEV) {
+            console.log('[ServerDashboard] realtime UPDATE received id:', updated.id, '→', updated.status)
+          }
+
           setIntents(prev =>
             prev.map(i => (i.id === updated.id ? { ...i, ...updated } : i))
           )
